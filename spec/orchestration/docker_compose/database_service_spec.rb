@@ -34,7 +34,7 @@ RSpec.describe Orchestration::DockerCompose::DatabaseService do
       its(['environment']) do
         is_expected.to eql(
           'POSTGRES_PASSWORD' => 'password',
-          'PGDATA' => '/var/pgdata'
+          'PGDATA' => '/var/lib/postgresql/data'
         )
       end
     end
