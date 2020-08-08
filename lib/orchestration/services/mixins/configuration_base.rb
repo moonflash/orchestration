@@ -29,6 +29,7 @@ module Orchestration
       end
 
       def host
+        return @service_name if @env.environment == 'test' && @options[:sidecar]
         return '127.0.0.1' if %w[test development].include?(@env.environment)
 
         @service_name
@@ -37,22 +38,38 @@ module Orchestration
       def configured?
         port
         true
-      rescue KeyError => error
-        @error = error
+      rescue KeyError => e
+        @error = e
         false
+      end
+
+      def image
+        service['image']
       end
 
       def port
         return @env.app_port if @service_name == 'app'
 
-        local, _, remote = @env.docker_compose_config
-                               .fetch('services')
-                               .fetch(@service_name)
-                               .fetch('ports')
-                               .first
-                               .partition(':')
+        local, remote = parse_port(service).map(&:to_i)
+        return remote if @env.environment == 'test' && @options[:sidecar]
 
-        (@env.environment == 'production' ? remote : local).to_i
+        (@env.environment == 'production' ? remote : local)
+      end
+
+      def service
+        @service ||= @env.docker_compose_config
+                         .fetch('services')
+                         .fetch(@service_name)
+      end
+
+      def parse_port(service)
+        # Remove our sidecar variable for easier parsing
+        # '{sidecar-27018:}27017' => '27018:27017'
+        local, _, remote = service.fetch('ports')
+                                  .first
+                                  .sub(/\${sidecar-(\d+):}/, '\1:')
+                                  .partition(':')
+        [local, remote]
       end
 
       def yaml(content)

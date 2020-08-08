@@ -30,9 +30,11 @@ printrawln=$(call printraw,$1'\n')
 stdout=${pwd}/log/orchestration.stdout.log
 stderr=${pwd}/log/orchestration.stderr.log
 log_path_length=$(shell echo "${stdout}" | wc -c)
+ifndef verbose
 log:= >>${stdout} 2>>${stderr}
 progress_point:=perl -e 'while( my $$line = <STDIN> ) { printf("."); select()->flush(); }'
 log_progress:= > >(tee -ai ${stdout} >&1 | ${progress_point}) 2> >(tee -ai ${stderr} 2>&1 | ${progress_point})
+endif
 red:=$(shell tput setaf 1)
 green:=$(shell tput setaf 2)
 yellow:=$(shell tput setaf 3)
@@ -49,7 +51,7 @@ managed_env_tag:=\# -|- ORCHESTRATION
 standard_env_path:=${pwd}/.env
 backup_env_path:=${pwd}/.env.orchestration.backup
 is_managed_env:=$$(test -f '${standard_env_path}' && tail -n 1 '${standard_env_path}') == "${managed_env_tag}"*
-
+token:=$(shell cat /dev/urandom | LC_CTYPE=C tr -dc 'a-z0-9' | fold -w8 | head -n1)
 back_up_env:=( \
                [ ! -f '${standard_env_path}' ] \
              || \
@@ -85,17 +87,19 @@ restore_env:=( \
 
 key_chars:=[a-zA-Z0-9_]
 censored:=**********
-censor=sed 's/\(^${key_chars}*$(1)${key_chars}*\)=\(.*\)$$/\1=${censored}/'
-censor_urls:=sed 's|\([a-zA-Z0-9_+]\+://.*:\).*\(@.*\)$$|\1${censored}\2|'
-format_env:=$(call censor,SECRET) | \
-            $(call censor,PASSWORD) | \
-            $(call censor,TOKEN) | \
-            $(call censor,PRIVATE) | \
-            $(call censor,KEY) | \
-            ${censor_urls} | \
-            sed 's/\(^[a-zA-Z0-9_]\+\)=/${blue}\1${reset}=/' | \
-            sed 's/^/  /' | \
-            sed 's/=\(.*\)$$/=${yellow}\1${reset}/'
+censor=s/\(^${key_chars}*$(1)${key_chars}*\)=\(.*\)$$/\1=${censored}/
+censor_urls:=s|\([a-zA-Z0-9_+]\+://.*:\).*\(@.*\)$$|\1${censored}\2|
+format_env:=sed '$(call censor,SECRET); \
+                 $(call censor,TOKEN); \
+                 $(call censor,PRIVATE); \
+                 $(call censor,KEY); \
+                 $(censor_urls); \
+                 /^\s*$$/d; \
+                 /^\s*\#/d; \
+                 s/\(^[a-zA-Z0-9_]\+\)=/${blue}\1${reset}=/; \
+                 s/^/  /; \
+                 s/=\(.*\)$$/=${yellow}\1${reset}/' | \
+            sort
 
 fail=( \
        $(call printraw,' ${cross}') ; \

@@ -15,47 +15,40 @@ namespace :orchestration do
     end
   end
 
-  namespace :app do
-    desc I18n.t('orchestration.rake.app.wait')
-    task :wait do
-      Orchestration::Services::App::Healthcheck.start(
-        nil, nil, config_path: ENV['config'], service_name: ENV['service']
-      )
-    end
+  desc I18n.t('orchestration.rake.config')
+  task :config do
+    config = YAML.safe_load(File.read('.orchestration.yml'))
+    puts "#{config['docker']['organization']} #{config['docker']['repository']}"
   end
 
-  namespace :database do
-    desc I18n.t('orchestration.rake.database.wait')
-    task :wait do
-      Orchestration::Services::Database::Healthcheck.start(
-        nil, nil, config_path: ENV['config'], service_name: ENV['service']
-      )
-    end
+  desc I18n.t('orchestration.rake.healthcheck')
+  task :healthcheck do
+    Orchestration::DockerHealthcheck.execute
   end
 
-  namespace :mongo do
-    desc I18n.t('orchestration.rake.mongo.wait')
-    task :wait do
-      Orchestration::Services::Mongo::Healthcheck.start(
-        nil, nil, config_path: ENV['config'], service_name: ENV['service']
-      )
-    end
-  end
+  desc I18n.t('orchestration.rake.wait')
+  task :wait do
+    Orchestration::InstallGenerator.new.verify_makefile(false)
+    env = Orchestration::Environment.new
+    services = Orchestration::Services
+    env.docker_compose_config['services'].each do |name, _service|
+      path = nil
 
-  namespace :rabbitmq do
-    desc I18n.t('orchestration.rake.rabbitmq.wait')
-    task :wait do
-      Orchestration::Services::RabbitMQ::Healthcheck.start(
-        nil, nil, config_path: ENV['config'], service_name: ENV['service']
-      )
-    end
-  end
+      adapter = if name == 'database'
+                  services::Database
+                elsif name.include?('database')
+                  path = "config/database.#{name.sub('database-', '')}.yml"
+                  services::Database
+                elsif name == 'mongo'
+                  services::Mongo
+                elsif name == 'rabbitmq'
+                  services::RabbitMQ
+                else
+                  services::Listener
+                end
 
-  namespace :listener do
-    desc I18n.t('orchestration.rake.listener.wait')
-    task :wait do
-      Orchestration::Services::Listener::Healthcheck.start(
-        nil, nil, service_name: ENV.fetch('service')
+      adapter::Healthcheck.start(
+        nil, nil, config_path: path, service_name: name, sidecar: ENV['sidecar']
       )
     end
   end

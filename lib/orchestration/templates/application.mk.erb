@@ -12,3 +12,13 @@
 test: test-setup
 	bundle exec rspec
 	bundle exec rubocop
+
+# Start development containers and create/migrate/seed database
+.PHONY: develop
+develop:
+	bundle install
+	@$(MAKE) start env=test
+	@$(MAKE) start env=development
+	bundle exec rake db:create
+	bundle exec rake db:migrate
+	bundle exec rake db:seed

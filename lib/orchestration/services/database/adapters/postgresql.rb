@@ -37,7 +37,7 @@ module Orchestration
           end
 
           def data_dir
-            '/var/lib/postgresql/data'
+            '/var/pgdata'
           end
         end
       end

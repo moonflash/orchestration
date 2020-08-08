@@ -16,9 +16,9 @@ RSpec.describe Orchestration::Services::Database::Adapters::Postgresql do
   its(:environment) do
     is_expected.to eql(
       'POSTGRES_PASSWORD' => 'password',
-      'PGDATA' => '/var/lib/postgresql/data'
+      'PGDATA' => '/var/pgdata'
     )
   end
 
-  its(:data_dir) { is_expected.to eql '/var/lib/postgresql/data' }
+  its(:data_dir) { is_expected.to eql '/var/pgdata' }
 end

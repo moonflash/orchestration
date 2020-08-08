@@ -27,7 +27,7 @@ module Orchestration
 
         def healthcheck
           {
-            'test' => ['ruby', "/app/#{orchestration}/healthcheck.rb"],
+            'test' => ['bundle', 'exec', 'rake', 'orchestration:healthcheck'],
             # Defaults according to
             # https://docs.docker.com/engine/reference/builder/#healthcheck
             # Except start_period which cannot be set to 0s
@@ -113,7 +113,7 @@ module Orchestration
       end
 
       def ports
-        ['${CONTAINER_PORT:?CONTAINER_PORT must be provided}:8080']
+        ['${PUBLISH_PORT:?PUBLISH_PORT must be provided}:8080']
       end
     end
   end

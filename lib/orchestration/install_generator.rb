@@ -27,16 +27,30 @@ module Orchestration
       @terminal.write(:skip, relpath)
     end
 
-    def orchestration_makefile
+    def verify_makefile(skip = true)
+      # Only run when called explicitly [from Rake tasks].
+      # (I know this is hacky).
+      return if skip
+
       content = template('orchestration.mk', makefile_environment)
       path = @env.orchestration_root.join('Makefile')
-      path.exist? ? update_file(path, content) : create_file(path, content)
+      return if path.exist? && content == File.read(path)
+
+      write_file(path, content)
+      @terminal.write(:update, 'Makefile')
+      @terminal.write(:status, t(:auto_update))
     end
 
     def application_makefile
       path = @env.root.join('Makefile')
       simple_copy('application.mk', path) unless File.exist?(path)
       inject_if_missing(path, 'include orchestration/Makefile')
+    end
+
+    def orchestration_makefile
+      content = template('orchestration.mk', makefile_environment)
+      path = @env.orchestration_root.join('Makefile')
+      path.exist? ? update_file(path, content) : create_file(path, content)
     end
 
     def dockerfile
@@ -54,23 +68,10 @@ module Orchestration
       FileUtils.chmod('a+x', path)
     end
 
-    def gitignore
-      path = @env.root.join('.gitignore')
-      globs = %w[.build/ .deploy/ Gemfile Gemfile.lock docker-compose.local.yml]
-      entries = %w[.env deploy.tar] + globs.map do |entry|
-        "#{@env.orchestration_dir_name}/#{entry}"
-      end
-
-      ensure_lines_in_file(path, entries)
-    end
-
     def docker_compose
-      @docker_compose.docker_compose_yml
       @docker_compose.docker_compose_test_yml
       @docker_compose.docker_compose_development_yml
-      @docker_compose.docker_compose_local_yml
       @docker_compose.docker_compose_production_yml
-      @docker_compose.docker_compose_override_yml
     end
 
     def puma
@@ -87,6 +88,8 @@ module Orchestration
       content = template('unicorn.rb')
       path = @env.root.join('config', 'unicorn.rb')
       create_file(path, content, backup: true)
+      regex = /gem\s+['"]unicorn['"]/
+      ensure_line_in_file(gemfile_path, "gem 'unicorn'", regex: regex)
     end
 
     def database_yml
@@ -110,16 +113,18 @@ module Orchestration
       service_config('rabbitmq.yml', Services::RabbitMQ::Configuration)
     end
 
-    def healthcheck
-      simple_copy('healthcheck.rb')
-    end
-
-    def yaml_bash
-      simple_copy('yaml.bash')
-    end
-
     def env
       simple_copy('env', @env.root.join('.env'), overwrite: false)
+    end
+
+    def gitignore
+      path = @env.root.join('.gitignore')
+      globs = %w[.build/ .deploy/ Gemfile Gemfile.lock docker-compose.local.yml]
+      lines = %w[orchestration/.sidecar .env deploy.tar] + globs.map do |line|
+        "#{@env.orchestration_dir_name}/#{line}"
+      end
+
+      ensure_lines_in_file(path, lines)
     end
 
     def deploy_mk

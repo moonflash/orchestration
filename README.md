@@ -1,13 +1,5 @@
 # Orchestration
 
-```
-I've got two tickets to the game
-It'd be great if I could take you to it this Sunday
-                                       --Nickelback
-```
-
-## Overview
-
 _Orchestration_ aims to provide a convenient and consistent process for working with _Rails_ and _Docker_ without obscuring underlying components.
 
 At its core _Orchestration_ is simply a `Makefile` and a set of `docker-compose.yml` files with sensible, general-purpose default settings. Users are encouraged to tailor the generated build-out to suit their application; once the build-out has been generated it belongs to the application.
@@ -35,7 +27,7 @@ The below screenshot demonstrates _Orchestration_ being installed in a brand new
 Add _Orchestration_ to your Gemfile:
 
 ```ruby
-gem 'orchestration', '~> 0.4.10'
+gem 'orchestration', '~> 0.5.4'
 ```
 
 Install:
@@ -55,6 +47,11 @@ rake orchestration:install server=unicorn # (or 'puma' [default], etc.)
 ```
 
 To rebuild all build-out at any time, pass `force=yes` to the above install command.
+
+To rebuild just `orchestration/Makefile` (useful after upgrading the _Orchestration_ gem):
+```bash
+rake orchestration:install:makefile
+```
 
 You will be prompted to enter values for your _Docker_ organisation and repository name. For example, the _organisation_ and _repository_ for https://hub.docker.com/r/rubyorchestration/sampleapp are `rubyorchestration` and `sampleapp` respectively. If you are unsure of these values, they can be modified later by editing `.orchestration.yml` in the root of your project directory.
 
@@ -138,7 +135,20 @@ Note that `git archive` is used to generate the build context. Any uncommitted c
 make build
 ```
 
-See [build environment](#build-environment) for more details.
+The `include` option can also be passed to provide a manifest file. Any files listed in this file will also be built into the _Docker_ image. Files **must** be located within the project directory.
+
+```bash
+make build include=manifest.txt
+```
+
+```bash
+# manifest.txt
+doc/api/swagger.json
+doc/api/soap.xml
+doc/api/doc.html
+```
+
+See also [build environment](#build-environment) if you use gems hosted on private _GitHub_/_Bitbucket_ repositories.
 
 #### Push latest image
 
@@ -160,6 +170,11 @@ To load all variables from `.env` and launch a development server, run the follo
 make serve
 ```
 
+To load a _Rails_ console:
+```bash
+make console
+```
+
 The application environment will be output on launch for convenience.
 
 To pass extra commands to the _Rails_ server:
@@ -178,6 +193,12 @@ A default `test` target is provided in your application's main `Makefile`. You a
 To launch all dependency containers, run database migrations, and run tests:
 ```
 make test
+```
+
+If you prefer to run tests manually (e.g. if you want to run tests for a specific file) then the `test-setup` target can be used:
+```
+make test-setup
+bundle exec rspec spec/my_class_spec.rb
 ```
 
 Note that _Orchestration_ will wait for all services to become fully available (i.e. running and providing valid responses) before attempting to run tests. This is specifically intended to facilitate testing in continuous integration environments.
@@ -205,6 +226,8 @@ To connect via _SSH_ to a remote swarm and deploy, pass the `manager` parameter:
 ```
 make deploy manager=user@manager.swarm.example.com
 ```
+
+The file `orchestration/docker-compose.production.yml` is created automatically. If your `RAILS_ENV` is set to something other than `production` then another file will need to be created (e.g. `orchestration/docker-compose.staging.yml`). In most cases this file can be a _symlink_ to the original `production` configuration and environment variables can be used to customise the content.
 
 #### Roll back a deployment
 
@@ -249,7 +272,7 @@ Note that the following two variables _must_ be set in the relevant `.env` file 
 
 ```
 # Published port for your application service:
-CONTAINER_PORT=3000
+PUBLISH_PORT=3000
 
 # Number of replicas of your application service:
 REPLICAS=5
@@ -265,10 +288,15 @@ The output from most underlying components is hidden in an effort to make contin
 tail -f log/orchestration*.log
 ```
 
-A convenience `Makefile` target `dump` is provided which will output all consumed _stdout_ and _stderr_:
+A convenience `Makefile` target `dump` is provided. The following command will output all consumed _stdout_, _stderr_, and _Docker Compose_ container logs for the test environment:
 
 ```bash
-make dump
+make dump env=test
+```
+
+All commands also support the `verbose` flag which will output all logs immediately to the console:
+```bash
+make build verbose=1
 ```
 
 <a name="build-environment"></a>
@@ -299,7 +327,7 @@ See related documentation:
 | `WEB_HEALTHCHECK_PATH` | Path expected to return a successful response | `/` |
 | `WEB_HEALTHCHECK_READ_TIMEOUT` | Number of seconds to wait for data before failing healthcheck | `10` |
 | `WEB_HEALTHCHECK_OPEN_TIMEOUT` | Number of seconds to wait for connection before failing healthcheck | `10` |
-| `WEB_HEALTHCHECK_SUCCESS_CODES` | Comma-separated list of HTTP status codes that will be deemed a success | `200,202,204` |
+| `WEB_HEALTHCHECK_SUCCESS_CODES` | Comma-separated list of HTTP status codes that will be deemed a success | `200,201,202,204` |
 
 If your application does not have a suitable always-available route to use as a healthcheck, the following one-liner may be useful:
 
@@ -336,6 +364,20 @@ To do this automatically, pass the `sidecar` parameter to the `start` or `test` 
 make test sidecar=1
 ```
 
+When running in sidecar mode container-to-container networking is used so there is no benefit to binding dependency containers to a specific port on the host machine (only the target port will be used). For this reason a random, ephemeral port (chosen by _Docker_) will be used to allow multiple instances of each dependency to run alongside one another.
+
+The _Docker Compose_ project name (and derived network name) is also suffixed with a random token to avoid container/network name conflicts.
+
+Note that a temporary file `orchestration/.sidecar` containing the random project name suffix will be created when sidecar mode is used. If this file exists then sidecar mode is always assumed to be _on_. This is to allow (e.g.) stopping services that have been started separately with another command, for example:
+
+```bash
+# Start dependencies and run tests in sidecar mode
+make test sidecar=1
+
+# Stop test dependencies in sidecar mode
+make stop env=test
+```
+
 <a name="rabbitmq-configuration"></a>
 ## RabbitMQ Configuration
 
@@ -365,44 +407,10 @@ This is a convention of the _Orchestration_ gem intended to make _RabbitMQ_ conf
 
 ## Alternate Database Configuration Files
 
-If you have multiple databases configured in various (e.g.) `config/database.*.yml` files then the `make wait-database` command can be used directly in continuous integration environments to verify that your database services are available.
+If you have multiple databases configured in various `config/database.*.yml` files then the `make wait` command will automatically detect database configurations.
 
-Note that all services from the relevant `docker-compose.yml` configuration will be loaded when using the `make start` or `make test-setup` (called by default `make test` command).
+If a service `database-example` is included in the relevant _Docker Compose_ configuration then `config/database.example.yml` will be used to load the connection configuration. Note that the service name _must_ begin with `database-`.
 
-Assuming the following configurations:
-```
-# orchestration/docker-compose.test.yml
-version: '3.7'
-services:
-  customdb:
-    image: postgres
-    ports:
-      - "55667:5432"
-  # ...
-```
-
-```
-# config/database.custom.yml
-test:
-  adapter: postgresql
-  host: 127.0.0.1
-  port: 55667
-  username: postgres
-  password: password
-  database: postgres
-```
-
-The following command can be used to ensure that the `customdb` service is available:
-```
-make wait-database service=custom config=config/database.custom.yml env=test
-```
-
-You may wish to extend the example `Makefile` to include something like this:
-```
-test: test-setup
-	$(MAKE) wait-database service=custom config=config/database.custom.yml env=test
-	# ...
-```
 ## License
 
 [MIT License](LICENSE)

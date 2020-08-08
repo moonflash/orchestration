@@ -18,14 +18,14 @@ module Orchestration
           "[#{adapter.name}] #{host}:#{port}"
         end
 
-        def settings
+        def settings(healthcheck: false)
           {
             adapter: adapter.name,
             host: host,
             port: port,
             username: username,
             password: password,
-            database: database
+            database: healthcheck ? adapter.credentials['database'] : database
           }.transform_keys(&:to_s)
         end
 
@@ -73,8 +73,12 @@ module Orchestration
           # A quirk of DatabaseUrl is that if no "/path" is present then the
           # `database` component is an empty string. In this unique case, we
           # want `nil` instead so that we can delegate to a default.
-          config['database'] = nil if config['database']&.empty?
+          config['database'] = nil if database_missing?(config)
           config
+        end
+
+        def database_missing?(config)
+          config.key?('database') && config['database'].empty?
         end
 
         def host

@@ -11,7 +11,7 @@ require 'paint'
 begin
   require 'rails'
 rescue LoadError
-  STDERR.puts('[orchestration] Rails not detected; skipping.')
+  warn('[orchestration] Running in non-Rails mode.')
 end
 
 I18n.load_path += Dir[File.join(File.expand_path('..', __dir__),
@@ -22,6 +22,7 @@ require 'orchestration/file_helpers'
 require 'orchestration/docker_compose'
 require 'orchestration/environment'
 require 'orchestration/errors'
+require 'orchestration/docker_healthcheck'
 require 'orchestration/install_generator'
 require 'orchestration/railtie' if defined?(Rails)
 require 'orchestration/service_check'
@@ -40,8 +41,8 @@ module Orchestration
   end
 
   def self.error(key, options = {})
-    STDERR.puts('# Orchestration Error')
-    STDERR.puts('# ' + I18n.t("orchestration.#{key}", options))
+    warn('# Orchestration Error')
+    warn('# ' + I18n.t("orchestration.#{key}", options))
   end
 
   def self.random_local_port

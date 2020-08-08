@@ -53,7 +53,7 @@ module Orchestration
     end
 
     def docker_compose_path(env = nil)
-      return orchestration_root.join('docker-compose.yml') if env.nil?
+      env ||= 'development'
 
       orchestration_root.join("docker-compose.#{env}.yml")
     end
@@ -69,12 +69,12 @@ module Orchestration
     end
 
     def default_app_name
-      default = root.basename.to_s
+      default = docker_filter(root.basename.to_s)
       return default unless defined?(Rails)
       # Edge case if Rails is used as a dependency but we are not a Rails app:
-      return default if Rails.application.class.parent == Object
+      return default if rails_application == Object
 
-      Rails.application.class.parent.name.underscore
+      docker_filter(rails_application.name.underscore)
     end
 
     def rabbitmq_url
@@ -82,7 +82,7 @@ module Orchestration
     end
 
     def app_port
-      ENV.fetch('CONTAINER_PORT', ENV.fetch('WEB_PORT', '3000')).to_i
+      ENV.fetch('PUBLISH_PORT', ENV.fetch('WEB_PORT', '3000')).to_i
     end
 
     def app_name
@@ -113,6 +113,23 @@ module Orchestration
 
     def mongo_volume
       'mongo'
+    end
+
+    private
+
+    def rails_application
+      app_class = Rails.application.class
+      # Avoid deprecation warning in Rails 6:
+      # `Module#parent` has been renamed to `module_parent`. `parent`
+      return app_class.module_parent if app_class.respond_to?(:module_parent)
+
+      app_class.parent
+    end
+
+    def docker_filter(string)
+      # Filter out characters not accepted by Docker Hub
+      permitted = [('0'..'9'), ('a'..'z')].map(&:to_a).flatten
+      string.split('').select { |char| permitted.include?(char) }.join
     end
   end
 end
